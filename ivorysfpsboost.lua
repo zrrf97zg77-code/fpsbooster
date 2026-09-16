@@ -1,15 +1,13 @@
 -- ============================================
 --   BLOX FRUITS - LITE + FULLBRIGHT + NO SHAKE
---   v3: fixed sword X spin lock
+--   v4: effects mostly normal, light trim
 -- ============================================
 
 local Lighting   = game:GetService("Lighting")
 local Workspace  = game:GetService("Workspace")
 local Players    = game:GetService("Players")
-local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
-local camera = Workspace.CurrentCamera
 
 -- ===== FULLBRIGHT =====
 pcall(function()
@@ -42,29 +40,18 @@ pcall(function()
     Workspace.Terrain.WaterTransparency= 1
 end)
 
--- ===== STRIP LISTS =====
+-- ===== LIGHT TRIM ONLY =====
+-- Only removing ambient clutter (not move effects)
 local STRIP = {
-    ["Smoke"]     = true,
-    ["Fire"]      = true,
-    ["Sparkles"]  = true,
-    ["Explosion"] = true,
+    ["Smoke"]    = true,   -- ambient smoke stacks
+    ["Fire"]     = true,   -- ambient fires
+    ["Sparkles"] = true,   -- floating sparkle particles on ground
 }
 
-local KEEP = {
-    ["ParticleEmitter"] = true,
-    ["Trail"]           = true,
-    ["Beam"]            = true,
-    ["Highlight"]       = true,
-    ["SelectionBox"]    = true,
-    ["SelectionSphere"] = true,
-    ["BillboardGui"]    = true,
-    ["SurfaceGui"]      = true,
-    ["ImageLabel"]      = true,
-    ["TextLabel"]       = true,
-}
-
-local MAX_PARTICLES, MAX_TRAILS, MAX_BEAMS = 120, 60, 40
-local particleCount, trailCount, beamCount = 0, 0, 0
+-- High caps — effects mostly normal, just preventing runaway spam
+local MAX_PARTICLES = 600
+local MAX_TRAILS    = 300
+local particleCount, trailCount = 0, 0
 
 local function strip(obj)
     pcall(function()
@@ -73,20 +60,12 @@ local function strip(obj)
             obj:Destroy()
             return
         end
-        if KEEP[obj.ClassName] then return end
 
-        if obj:IsA("Light") then
-            obj.Enabled = false
-            obj:Destroy()
-            return
-        end
-
+        -- Only flatten static world parts — leave effect parts alone
         if obj:IsA("BasePart") then
             local n = obj.Name:lower()
-            if not (n:find("effect") or n:find("hit") or n:find("aura")) then
-                obj.Material    = Enum.Material.SmoothPlastic
-                obj.Reflectance = 0
-                obj.CastShadow  = false
+            if not (n:find("effect") or n:find("hit") or n:find("aura") or n:find("glow")) then
+                obj.CastShadow = false
             end
         end
     end)
@@ -99,37 +78,21 @@ end
 Workspace.DescendantAdded:Connect(function(obj)
     task.defer(function()
         pcall(function()
+            -- Only cap if it goes absolutely crazy — otherwise leave alone
             if obj:IsA("ParticleEmitter") then
                 particleCount += 1
                 if particleCount > MAX_PARTICLES then
-                    obj.Enabled = false; obj:Destroy(); return
+                    obj.Enabled = false
+                    obj:Destroy()
                 end
-                obj.Rate          = math.min(obj.Rate, 8)
-                obj.Lifetime      = NumberRange.new(0.1, 0.4)
-                obj.Speed         = NumberRange.new(0, 8)
-                obj.Transparency  = NumberSequence.new(0.6)
-                obj.Size          = NumberSequence.new(0.4)
-                obj.LightEmission = 0
             end
 
             if obj:IsA("Trail") then
                 trailCount += 1
                 if trailCount > MAX_TRAILS then
-                    obj.Enabled = false; obj:Destroy(); return
+                    obj.Enabled = false
+                    obj:Destroy()
                 end
-                obj.Lifetime     = math.min(obj.Lifetime, 0.2)
-                obj.Transparency = NumberSequence.new(0.6)
-                obj.WidthScale   = NumberSequence.new(0.4)
-            end
-
-            if obj:IsA("Beam") then
-                beamCount += 1
-                if beamCount > MAX_BEAMS then
-                    obj.Enabled = false; obj:Destroy(); return
-                end
-                obj.Transparency = NumberSequence.new(0.5)
-                obj.Width0       = math.min(obj.Width0, 0.5)
-                obj.Width1       = math.min(obj.Width1, 0.5)
             end
 
             strip(obj)
@@ -139,17 +102,14 @@ end)
 
 -- ===== RENDER QUALITY + FPS =====
 pcall(function()
-    settings().Rendering.QualityLevel = Enum.QualityLevel.Level05
+    settings().Rendering.QualityLevel = Enum.QualityLevel.Level07
 end)
 pcall(function()
     setfpscap(9999)
 end)
 
--- ===== KILL CAMERA SHAKE (v3 - smarter) =====
--- Only kills SMALL rapid offsets (true shake).
--- Leaves LARGE rotations (sword spin, dash spin) alone.
-
--- Layer 1: scan for shake scripts
+-- ===== KILL CAMERA SHAKE (smarter — won't break sword spins) =====
+-- Scans for shake scripts
 pcall(function()
     local ps = player:FindFirstChild("PlayerScripts")
     if ps then
@@ -165,17 +125,8 @@ pcall(function()
     end
 end)
 
-pcall(function()
-    for _, v in pairs(player:GetDescendants()) do
-        local n = v.Name:lower()
-        if (v:IsA("Script") or v:IsA("LocalScript")) and n:find("shake") then
-            v:Destroy()
-        end
-    end
-end)
-
--- Layer 2: reset CameraOffset only (this was the main shake vector)
--- Don't touch camera.CFrame anymore — that's what broke your sword spin.
+-- Reset CameraOffset only (this is the real shake vector)
+-- Do NOT touch camera.CFrame — that was breaking your sword spin
 task.spawn(function()
     while task.wait(0.05) do
         pcall(function()
@@ -190,9 +141,8 @@ task.spawn(function()
     end
 end)
 
--- Layer 3: detect the spin-move lock and auto-break out of it
--- If your character is spinning and move hasn't ended, force it to end.
-local spinTimer = 0
+-- Auto-recovery if you get locked in a spin state again
+local stuckTimer = 0
 task.spawn(function()
     while task.wait(0.2) do
         pcall(function()
@@ -201,18 +151,16 @@ task.spawn(function()
             local hum = char:FindFirstChildOfClass("Humanoid")
             if not hum then return end
 
-            -- If humanoid is stuck in a non-running state for too long
-            -- (like mid-spin), nudge it back to normal.
             local state = hum:GetState()
             if state == Enum.HumanoidStateType.Physics
             or state == Enum.HumanoidStateType.PlatformStanding then
-                spinTimer += 0.2
-                if spinTimer > 4 then  -- stuck for 4 seconds? break free
+                stuckTimer += 0.2
+                if stuckTimer > 4 then
                     hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-                    spinTimer = 0
+                    stuckTimer = 0
                 end
             else
-                spinTimer = 0
+                stuckTimer = 0
             end
         end)
     end
@@ -245,4 +193,4 @@ pcall(function()
     end)
 end)
 
-print("[Blox Fruits Lite v3] Shake OFF | Sword spin FIXED | Effects reduced.")
+print("[Blox Fruits Lite v4] Effects mostly normal | Shake OFF | FullBright ON.")
