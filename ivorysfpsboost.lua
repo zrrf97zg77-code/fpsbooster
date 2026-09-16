@@ -1,6 +1,6 @@
 -- ============================================
 --   BLOX FRUITS - LITE + FULLBRIGHT + NO SHAKE
---   v4: effects mostly normal, light trim
+--   v6: fixes Lightning C white pillar glitch
 -- ============================================
 
 local Lighting   = game:GetService("Lighting")
@@ -9,11 +9,11 @@ local Players    = game:GetService("Players")
 
 local player = Players.LocalPlayer
 
--- ===== FULLBRIGHT =====
+-- ===== SOFTER FULLBRIGHT (prevents blowout) =====
 pcall(function()
-    Lighting.Ambient                 = Color3.fromRGB(200, 200, 200)
-    Lighting.OutdoorAmbient          = Color3.fromRGB(180, 180, 180)
-    Lighting.Brightness              = 2
+    Lighting.Ambient                 = Color3.fromRGB(178, 178, 178)
+    Lighting.OutdoorAmbient          = Color3.fromRGB(160, 160, 160)
+    Lighting.Brightness              = 1.5
     Lighting.ClockTime               = 14
     Lighting.GeographicLatitude      = 0
     Lighting.GlobalShadows           = false
@@ -40,18 +40,8 @@ pcall(function()
     Workspace.Terrain.WaterTransparency= 1
 end)
 
--- ===== LIGHT TRIM ONLY =====
--- Only removing ambient clutter (not move effects)
-local STRIP = {
-    ["Smoke"]    = true,   -- ambient smoke stacks
-    ["Fire"]     = true,   -- ambient fires
-    ["Sparkles"] = true,   -- floating sparkle particles on ground
-}
-
--- High caps — effects mostly normal, just preventing runaway spam
-local MAX_PARTICLES = 600
-local MAX_TRAILS    = 300
-local particleCount, trailCount = 0, 0
+-- ===== LIGHT TRIM =====
+local STRIP = { ["Smoke"]=true, ["Fire"]=true, ["Sparkles"]=true }
 
 local function strip(obj)
     pcall(function()
@@ -60,13 +50,8 @@ local function strip(obj)
             obj:Destroy()
             return
         end
-
-        -- Only flatten static world parts — leave effect parts alone
         if obj:IsA("BasePart") then
-            local n = obj.Name:lower()
-            if not (n:find("effect") or n:find("hit") or n:find("aura") or n:find("glow")) then
-                obj.CastShadow = false
-            end
+            obj.CastShadow = false
         end
     end)
 end
@@ -76,40 +61,84 @@ for _, obj in pairs(Workspace:GetDescendants()) do
 end
 
 Workspace.DescendantAdded:Connect(function(obj)
-    task.defer(function()
+    task.defer(function() strip(obj) end)
+end)
+
+-- ===== LIGHTNING C PILLAR FIX =====
+-- The Lightning C move spawns a giant bright pillar.
+-- We detect it by size + brightness and tone it down (not remove it).
+task.spawn(function()
+    while task.wait(0.5) do
         pcall(function()
-            -- Only cap if it goes absolutely crazy — otherwise leave alone
-            if obj:IsA("ParticleEmitter") then
-                particleCount += 1
-                if particleCount > MAX_PARTICLES then
-                    obj.Enabled = false
-                    obj:Destroy()
+            for _, obj in pairs(Workspace:GetDescendants()) do
+                -- Look for giant vertical parts (the pillar)
+                if obj:IsA("BasePart") then
+                    local size = obj.Size
+                    -- Pillar shape: tall, thin, and likely very bright
+                    if size.Y > 40 and size.X < 25 and size.Z < 25 then
+                        -- Check if it's a bright effect (transparency < 1)
+                        if obj.Transparency < 0.9 then
+                            -- Tone it down instead of removing
+                            obj.Transparency = 0.85  -- mostly see-through
+                            obj.Material = Enum.Material.SmoothPlastic
+                            obj.Reflectance = 0
+                            -- Reduce brightness if it has a light
+                            for _, child in pairs(obj:GetChildren()) do
+                                if child:IsA("Light") then
+                                    child.Brightness = 0.5
+                                    child.Range = 5
+                                end
+                                if child:IsA("ParticleEmitter") then
+                                    child.Rate = math.min(child.Rate, 5)
+                                    child.Transparency = NumberSequence.new(0.8)
+                                end
+                                if child:IsA("Beam") then
+                                    child.Transparency = NumberSequence.new(0.8)
+                                    child.Width0 = math.min(child.Width0, 1)
+                                    child.Width1 = math.min(child.Width1, 1)
+                                end
+                            end
+                        end
+                    end
+                end
+
+                -- Also tone down particle emitters that are huge
+                if obj:IsA("ParticleEmitter") then
+                    if obj.Size and obj.Size.Max > 10 then
+                        obj.Size = NumberSequence.new(3)
+                        obj.Transparency = NumberSequence.new(0.8)
+                        obj.Rate = math.min(obj.Rate, 5)
+                    end
+                end
+
+                -- Tone down huge beams
+                if obj:IsA("Beam") then
+                    if obj.Width0 > 5 or obj.Width1 > 5 then
+                        obj.Width0 = 1
+                        obj.Width1 = 1
+                        obj.Transparency = NumberSequence.new(0.8)
+                    end
                 end
             end
-
-            if obj:IsA("Trail") then
-                trailCount += 1
-                if trailCount > MAX_TRAILS then
-                    obj.Enabled = false
-                    obj:Destroy()
-                end
-            end
-
-            strip(obj)
         end)
-    end)
+    end
 end)
 
--- ===== RENDER QUALITY + FPS =====
+-- ===== LITE TEXTURES =====
 pcall(function()
-    settings().Rendering.QualityLevel = Enum.QualityLevel.Level07
+    settings().Rendering.QualityLevel = Enum.QualityLevel.Level04
 end)
+
+pcall(function()
+    settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level02
+end)
+
+-- ===== FPS UNLOCK =====
 pcall(function()
     setfpscap(9999)
 end)
 
--- ===== KILL CAMERA SHAKE (smarter — won't break sword spins) =====
--- Scans for shake scripts
+-- ===== KILL CAMERA SHAKE (safe for sword spins) =====
 pcall(function()
     local ps = player:FindFirstChild("PlayerScripts")
     if ps then
@@ -125,8 +154,6 @@ pcall(function()
     end
 end)
 
--- Reset CameraOffset only (this is the real shake vector)
--- Do NOT touch camera.CFrame — that was breaking your sword spin
 task.spawn(function()
     while task.wait(0.05) do
         pcall(function()
@@ -141,7 +168,7 @@ task.spawn(function()
     end
 end)
 
--- Auto-recovery if you get locked in a spin state again
+-- Auto-recovery if stuck in spin
 local stuckTimer = 0
 task.spawn(function()
     while task.wait(0.2) do
@@ -150,7 +177,6 @@ task.spawn(function()
             if not char then return end
             local hum = char:FindFirstChildOfClass("Humanoid")
             if not hum then return end
-
             local state = hum:GetState()
             if state == Enum.HumanoidStateType.Physics
             or state == Enum.HumanoidStateType.PlatformStanding then
@@ -166,13 +192,13 @@ task.spawn(function()
     end
 end)
 
--- ===== RE-APPLY FULLBRIGHT =====
+-- ===== RE-APPLY SOFT FULLBRIGHT =====
 task.spawn(function()
     while task.wait(5) do
         pcall(function()
-            Lighting.Ambient        = Color3.fromRGB(200, 200, 200)
-            Lighting.OutdoorAmbient = Color3.fromRGB(180, 180, 180)
-            Lighting.Brightness     = 2
+            Lighting.Ambient        = Color3.fromRGB(178, 178, 178)
+            Lighting.OutdoorAmbient = Color3.fromRGB(160, 160, 160)
+            Lighting.Brightness     = 1.5
             Lighting.GlobalShadows  = false
             Lighting.FogEnd         = 9e9
             for _, v in pairs(Lighting:GetChildren()) do
@@ -193,4 +219,4 @@ pcall(function()
     end)
 end)
 
-print("[Blox Fruits Lite v4] Effects mostly normal | Shake OFF | FullBright ON.")
+print("[Blox Fruits Lite v6] Lightning C pillar fix ON | Effects normal | Shake OFF.")
