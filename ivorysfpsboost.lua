@@ -1,16 +1,20 @@
 -- ============================================
---   LITE GRAPHICS + FULLBRIGHT + KEEP EFFECTS
---   Auto-applies on execute. No UI.
+--   BLOX FRUITS - LITE GRAPHICS + FULLBRIGHT
+--   Keeps move effects + aim visible
 -- ============================================
 
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
--- ===== FULLBRIGHT =====
+local player = Players.LocalPlayer
+
+-- ===== FULLBRIGHT (soft, not blinding) =====
 pcall(function()
-    Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-    Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-    Lighting.Brightness = 3
+    Lighting.Ambient = Color3.fromRGB(200, 200, 200)
+    Lighting.OutdoorAmbient = Color3.fromRGB(180, 180, 180)
+    Lighting.Brightness = 2
     Lighting.ClockTime = 14
     Lighting.GeographicLatitude = 0
     Lighting.GlobalShadows = false
@@ -19,6 +23,8 @@ pcall(function()
     Lighting.EnvironmentDiffuseScale = 1
     Lighting.EnvironmentSpecularScale = 0
     Lighting.ShadowSoftness = 0
+    Lighting.ColorShift_Top = Color3.fromRGB(0, 0, 0)
+    Lighting.ColorShift_Bottom = Color3.fromRGB(0, 0, 0)
 
     for _, v in pairs(Lighting:GetChildren()) do
         if v:IsA("PostEffect") or v:IsA("Atmosphere") or v:IsA("Sky") then
@@ -27,7 +33,7 @@ pcall(function()
     end
 end)
 
--- ===== TERRAIN / WATER =====
+-- ===== WATER (Blox Fruits has a LOT of water) =====
 pcall(function()
     Workspace.Terrain.WaterWaveSize = 0
     Workspace.Terrain.WaterWaveSpeed = 0
@@ -35,38 +41,52 @@ pcall(function()
     Workspace.Terrain.WaterTransparency = 1
 end)
 
--- ===== STRIP ONLY VISUAL NOISE (keep gameplay effects) =====
-local STRIP_CLASSES = {
+-- ===== STRIP ONLY AMBIENT CLUTTER, KEEP MOVE FX =====
+local STRIP = {
     ["Smoke"] = true,
     ["Fire"] = true,
     ["Sparkles"] = true,
 }
 
-local KEEP_CLASSES = {
-    ["ParticleEmitter"] = true,   -- keep hit sparks / attack FX
-    ["Trail"] = true,             -- keep weapon trails
-    ["Beam"] = true,              -- keep laser / beam moves
+local KEEP = {
+    ["ParticleEmitter"] = true,
+    ["Trail"] = true,
+    ["Beam"] = true,
+    ["Highlight"] = true,
+    ["SelectionBox"] = true,
+    ["SelectionSphere"] = true,
+    ["PointLight"] = true,
+    ["SpotLight"] = true,
+    ["SurfaceLight"] = true,
+    ["Decal"] = true,
+    ["Texture"] = true,
+    ["SurfaceAppearance"] = true,
+    ["BillboardGui"] = true,
+    ["SurfaceGui"] = true,
+    ["ImageLabel"] = true,
+    ["TextLabel"] = true,
 }
 
 local function strip(obj)
     pcall(function()
-        -- Remove ambient world clutter only
-        if STRIP_CLASSES[obj.ClassName] then
+        if STRIP[obj.ClassName] then
             obj.Enabled = false
             obj:Destroy()
             return
         end
+        if KEEP[obj.ClassName] then return end
 
-        -- Leave gameplay effects alone
-        if KEEP_CLASSES[obj.ClassName] then
-            return
-        end
-
-        -- No shadows, no reflect, no PBR materials (FPS boost)
+        -- Only flatten static world parts, NOT effects/accessories
         if obj:IsA("BasePart") then
-            obj.Material = Enum.Material.SmoothPlastic
-            obj.Reflectance = 0
-            obj.CastShadow = false
+            local isEffect = obj.Name:lower():find("effect")
+                or obj.Name:lower():find("hit")
+                or obj.Name:lower():find("aura")
+                or obj.Name:lower():find("glow")
+            if not isEffect then
+                obj.Material = Enum.Material.SmoothPlastic
+                obj.Reflectance = 0
+                obj.CastShadow = false
+            end
         end
     end)
 end
@@ -79,9 +99,10 @@ Workspace.DescendantAdded:Connect(function(obj)
     task.defer(strip, obj)
 end)
 
--- ===== LOWER RENDER QUALITY (keeps FPS high) =====
+-- ===== DON'T CRUSH RENDER QUALITY =====
+-- Level01 was killing your visibility. Level05 keeps effects sharp.
 pcall(function()
-    settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+    settings().Rendering.QualityLevel = Enum.QualityLevel.Level05
 end)
 
 -- ===== FPS UNLOCK =====
@@ -89,13 +110,22 @@ pcall(function()
     setfpscap(9999)
 end)
 
--- ===== RE-APPLY FULLBRIGHT PERIODICALLY =====
+-- ===== ANTI-AFK (so you don't get kicked while testing) =====
+pcall(function()
+    player.Idled:Connect(function()
+        local vu = game:GetService("VirtualUser")
+        vu:CaptureController()
+        vu:ClickButton2(Vector2.new())
+    end)
+end)
+
+-- ===== RE-APPLY FULLBRIGHT =====
 task.spawn(function()
     while task.wait(5) do
         pcall(function()
-            Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-            Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-            Lighting.Brightness = 3
+            Lighting.Ambient = Color3.fromRGB(200, 200, 200)
+            Lighting.OutdoorAmbient = Color3.fromRGB(180, 180, 180)
+            Lighting.Brightness = 2
             Lighting.GlobalShadows = false
             Lighting.FogEnd = 9e9
             for _, v in pairs(Lighting:GetChildren()) do
@@ -107,4 +137,4 @@ task.spawn(function()
     end
 end)
 
-print("[Lite Graphics] FullBright ON, effects ON, lag OFF.")
+print("[Blox Fruits Lite] FullBright ON, moves VISIBLE, lag OFF.")
