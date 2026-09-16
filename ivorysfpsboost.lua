@@ -1,22 +1,24 @@
 -- ============================================
---   LITE GRAPHICS - AUTO APPLY
---   No UI. No toggles. Just fast.
+--   LITE GRAPHICS + FULLBRIGHT + KEEP EFFECTS
+--   Auto-applies on execute. No UI.
 -- ============================================
 
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
-local Players = game:GetService("Players")
 
--- ===== LIGHTING / EFFECTS =====
+-- ===== FULLBRIGHT =====
 pcall(function()
+    Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+    Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+    Lighting.Brightness = 3
+    Lighting.ClockTime = 14
+    Lighting.GeographicLatitude = 0
     Lighting.GlobalShadows = false
     Lighting.FogEnd = 9e9
-    Lighting.Brightness = 2
-    Lighting.EnvironmentDiffuseScale = 0
+    Lighting.FogStart = 9e9
+    Lighting.EnvironmentDiffuseScale = 1
     Lighting.EnvironmentSpecularScale = 0
     Lighting.ShadowSoftness = 0
-    Lighting.Ambient = Color3.fromRGB(178, 178, 178)
-    Lighting.OutdoorAmbient = Color3.fromRGB(178, 178, 178)
 
     for _, v in pairs(Lighting:GetChildren()) do
         if v:IsA("PostEffect") or v:IsA("Atmosphere") or v:IsA("Sky") then
@@ -33,28 +35,34 @@ pcall(function()
     Workspace.Terrain.WaterTransparency = 1
 end)
 
--- ===== STRIP OBJECTS (initial pass) =====
+-- ===== STRIP ONLY VISUAL NOISE (keep gameplay effects) =====
+local STRIP_CLASSES = {
+    ["Smoke"] = true,
+    ["Fire"] = true,
+    ["Sparkles"] = true,
+}
+
+local KEEP_CLASSES = {
+    ["ParticleEmitter"] = true,   -- keep hit sparks / attack FX
+    ["Trail"] = true,             -- keep weapon trails
+    ["Beam"] = true,              -- keep laser / beam moves
+}
+
 local function strip(obj)
     pcall(function()
-        if obj:IsA("ParticleEmitter")
-        or obj:IsA("Trail")
-        or obj:IsA("Smoke")
-        or obj:IsA("Fire")
-        or obj:IsA("Sparkles")
-        or obj:IsA("Beam")
-        or obj:IsA("Explosion") then
+        -- Remove ambient world clutter only
+        if STRIP_CLASSES[obj.ClassName] then
             obj.Enabled = false
             obj:Destroy()
+            return
         end
 
-        if obj:IsA("Decal") or obj:IsA("Texture") then
-            obj.Transparency = 1
+        -- Leave gameplay effects alone
+        if KEEP_CLASSES[obj.ClassName] then
+            return
         end
 
-        if obj:IsA("MeshPart") or obj:IsA("SpecialMesh") then
-            obj.TextureID = ""
-        end
-
+        -- No shadows, no reflect, no PBR materials (FPS boost)
         if obj:IsA("BasePart") then
             obj.Material = Enum.Material.SmoothPlastic
             obj.Reflectance = 0
@@ -67,12 +75,11 @@ for _, obj in pairs(Workspace:GetDescendants()) do
     strip(obj)
 end
 
--- ===== KEEP STRIPPING NEW STUFF =====
 Workspace.DescendantAdded:Connect(function(obj)
     task.defer(strip, obj)
 end)
 
--- ===== LOWER RENDER QUALITY =====
+-- ===== LOWER RENDER QUALITY (keeps FPS high) =====
 pcall(function()
     settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
 end)
@@ -82,14 +89,14 @@ pcall(function()
     setfpscap(9999)
 end)
 
--- ===== RE-APPLY LIGHTING PERIODICALLY (some games reset it) =====
+-- ===== RE-APPLY FULLBRIGHT PERIODICALLY =====
 task.spawn(function()
     while task.wait(5) do
         pcall(function()
+            Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+            Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+            Lighting.Brightness = 3
             Lighting.GlobalShadows = false
-            Lighting.Brightness = 2
-            Lighting.EnvironmentDiffuseScale = 0
-            Lighting.EnvironmentSpecularScale = 0
             Lighting.FogEnd = 9e9
             for _, v in pairs(Lighting:GetChildren()) do
                 if v:IsA("PostEffect") or v:IsA("Atmosphere") or v:IsA("Sky") then
@@ -100,4 +107,4 @@ task.spawn(function()
     end
 end)
 
-print("[Lite Graphics] Applied. No UI, just speed.")
+print("[Lite Graphics] FullBright ON, effects ON, lag OFF.")
