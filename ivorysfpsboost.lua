@@ -1,34 +1,77 @@
 -- ============================================
---   BLOX FRUITS - LITE + FULLBRIGHT + NO SHAKE
---   v6: fixes Lightning C white pillar glitch
+--   BLOX FRUITS - AGGRESSIVE LITE + LOOP
 -- ============================================
 
 local Lighting   = game:GetService("Lighting")
 local Workspace  = game:GetService("Workspace")
 local Players    = game:GetService("Players")
+local player     = Players.LocalPlayer
 
-local player = Players.LocalPlayer
+-- ===== CONTINUOUS LIGHTING APPLIER =====
+-- This loop runs forever, re-applying changes every 0.5s
+task.spawn(function()
+    while task.wait(0.5) do
+        pcall(function()
+            Lighting.Ambient                 = Color3.fromRGB(178, 178, 178)
+            Lighting.OutdoorAmbient          = Color3.fromRGB(160, 160, 160)
+            Lighting.Brightness              = 1.5
+            Lighting.ClockTime               = 14
+            Lighting.GlobalShadows           = false
+            Lighting.FogEnd                  = 9e9
+            Lighting.EnvironmentDiffuseScale = 1
+            Lighting.EnvironmentSpecularScale= 0
+            for _, v in pairs(Lighting:GetChildren()) do
+                if v:IsA("PostEffect") or v:IsA("Atmosphere") or v:IsA("Sky") then
+                    v:Destroy()
+                end
+            end
+        end)
+    end
+end)
 
--- ===== SOFTER FULLBRIGHT (prevents blowout) =====
-pcall(function()
-    Lighting.Ambient                 = Color3.fromRGB(178, 178, 178)
-    Lighting.OutdoorAmbient          = Color3.fromRGB(160, 160, 160)
-    Lighting.Brightness              = 1.5
-    Lighting.ClockTime               = 14
-    Lighting.GeographicLatitude      = 0
-    Lighting.GlobalShadows           = false
-    Lighting.FogEnd                  = 9e9
-    Lighting.FogStart                = 9e9
-    Lighting.EnvironmentDiffuseScale = 1
-    Lighting.EnvironmentSpecularScale= 0
-    Lighting.ShadowSoftness          = 0
-    Lighting.ColorShift_Top          = Color3.fromRGB(0, 0, 0)
-    Lighting.ColorShift_Bottom       = Color3.fromRGB(0, 0, 0)
+-- ===== CONTINUOUS TEXTURE/EFFECT STRIPPER =====
+-- Runs every 0.3s, strips textures and effects that respawn
+task.spawn(function()
+    while task.wait(0.3) do
+        pcall(function()
+            for _, obj in pairs(Workspace:GetDescendants()) do
+                -- Kill beams (lightning/lasers)
+                if obj:IsA("Beam") then
+                    obj.Enabled = false
+                    obj:Destroy()
+                -- Kill lights (glow spam)
+                elseif obj:IsA("Light") then
+                    obj.Enabled = false
+                    obj:Destroy()
+                -- Kill ambient clutter
+                elseif obj:IsA("Smoke") or obj:IsA("Fire")
+                    or obj:IsA("Sparkles") or obj:IsA("Explosion") then
+                    obj.Enabled = false
+                    obj:Destroy()
+                -- Strip textures to smooth plastic
+                elseif obj:IsA("BasePart") then
+                    obj.Material = Enum.Material.SmoothPlastic
+                    obj.Reflectance = 0
+                    obj.CastShadow = false
+                -- Kill decals
+                elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                    obj:Destroy()
+                end
+            end
+        end)
+    end
+end)
 
-    for _, v in pairs(Lighting:GetChildren()) do
-        if v:IsA("PostEffect") or v:IsA("Atmosphere") or v:IsA("Sky") then
-            v:Destroy()
-        end
+-- ===== NO CAMERA SHAKE =====
+task.spawn(function()
+    while task.wait(0.05) do
+        pcall(function()
+            local char = player.Character
+            if char then
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hum then hum.CameraOffset = Vector3.zero end
+            end
+        end)
     end
 end)
 
@@ -40,115 +83,14 @@ pcall(function()
     Workspace.Terrain.WaterTransparency= 1
 end)
 
--- ===== LIGHT TRIM =====
-local STRIP = { ["Smoke"]=true, ["Fire"]=true, ["Sparkles"]=true }
-
-local function strip(obj)
-    pcall(function()
-        if STRIP[obj.ClassName] then
-            obj.Enabled = false
-            obj:Destroy()
-            return
-        end
-        if obj:IsA("BasePart") then
-            obj.CastShadow = false
-        end
-    end)
-end
-
-for _, obj in pairs(Workspace:GetDescendants()) do
-    strip(obj)
-end
-
-Workspace.DescendantAdded:Connect(function(obj)
-    task.defer(function() strip(obj) end)
-end)
-
 -- ===== LITE TEXTURES =====
 pcall(function()
-    settings().Rendering.QualityLevel = Enum.QualityLevel.Level04
+    settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+    settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
 end)
 
-pcall(function()
-    settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level02
-end)
-
--- ===== FPS UNLOCK =====
-pcall(function()
-    setfpscap(9999)
-end)
-
--- ===== KILL CAMERA SHAKE (safe for sword spins) =====
-pcall(function()
-    local ps = player:FindFirstChild("PlayerScripts")
-    if ps then
-        for _, v in pairs(ps:GetDescendants()) do
-            local n = v.Name:lower()
-            if (v:IsA("Script") or v:IsA("LocalScript")) and n:find("shake") then
-                v:Destroy()
-            end
-            if v:IsA("NumberValue") and n:find("shake") then
-                v.Value = 0
-            end
-        end
-    end
-end)
-
-task.spawn(function()
-    while task.wait(0.05) do
-        pcall(function()
-            local char = player.Character
-            if char then
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum then
-                    hum.CameraOffset = Vector3.zero
-                end
-            end
-        end)
-    end
-end)
-
--- Auto-recovery if stuck in spin
-local stuckTimer = 0
-task.spawn(function()
-    while task.wait(0.2) do
-        pcall(function()
-            local char = player.Character
-            if not char then return end
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if not hum then return end
-            local state = hum:GetState()
-            if state == Enum.HumanoidStateType.Physics
-            or state == Enum.HumanoidStateType.PlatformStanding then
-                stuckTimer += 0.2
-                if stuckTimer > 4 then
-                    hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-                    stuckTimer = 0
-                end
-            else
-                stuckTimer = 0
-            end
-        end)
-    end
-end)
-
--- ===== RE-APPLY SOFT FULLBRIGHT =====
-task.spawn(function()
-    while task.wait(5) do
-        pcall(function()
-            Lighting.Ambient        = Color3.fromRGB(178, 178, 178)
-            Lighting.OutdoorAmbient = Color3.fromRGB(160, 160, 160)
-            Lighting.Brightness     = 1.5
-            Lighting.GlobalShadows  = false
-            Lighting.FogEnd         = 9e9
-            for _, v in pairs(Lighting:GetChildren()) do
-                if v:IsA("PostEffect") or v:IsA("Atmosphere") or v:IsA("Sky") then
-                    v:Destroy()
-                end
-            end
-        end)
-    end
-end)
+-- ===== FPS =====
+pcall(function() setfpscap(9999) end)
 
 -- ===== ANTI-AFK =====
 pcall(function()
@@ -159,4 +101,4 @@ pcall(function()
     end)
 end)
 
-print("[Blox Fruits Lite v6] Pillar fix REMOVED | Effects normal | Shake OFF.")
+print("[Aggressive Lite] Looping re-apply active.")
