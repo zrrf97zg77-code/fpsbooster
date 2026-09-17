@@ -1,6 +1,6 @@
 -- ============================================
---   BLOX FRUITS - ULTRA LITE
---   Only shows minimal move indicators
+--   LIGHT EFFECTS ONLY - Blox Fruits
+--   Strips lightning beams, keeps minimal move flashes
 -- ============================================
 
 local Lighting   = game:GetService("Lighting")
@@ -68,115 +68,82 @@ Workspace.DescendantAdded:Connect(function(obj)
     task.defer(function() strip(obj) end)
 end)
 
--- ===== ULTRA LITE EFFECT FILTER =====
--- Keep effects visible but make them SMALL, FAINT, and SHORT
--- so you can see opponent moves without screen spam.
+-- ===== EFFECT FILTER (NO BEAMS) =====
+-- Keeps: small particles, thin trails (brief flashes only)
+-- Removes: ALL beams (including lightning)
+-- Removes: big lights
 
-local MAX_PARTICLES = 250
-local MAX_TRAILS    = 100
-local MAX_BEAMS     = 50
-local pCount, tCount, bCount = 0, 0, 0
+local MAX_PARTICLES = 150
+local MAX_TRAILS    = 60
+local pCount, tCount = 0, 0
 
-Workspace.DescendantAdded:Connect(function(obj)
-    task.defer(function()
-        pcall(function()
-            -- PARTICLES: shrink, fade, slow down
-            if obj:IsA("ParticleEmitter") then
-                pCount += 1
-                if pCount > MAX_PARTICLES then
-                    obj.Enabled = false
-                    obj:Destroy()
-                    return
-                end
-                obj.Rate          = math.min(obj.Rate, 4)         -- very few
-                obj.Lifetime      = NumberRange.new(0.1, 0.3)     -- brief
-                obj.Speed         = NumberRange.new(0, 5)         -- slow
-                obj.Transparency  = NumberSequence.new(0.75)      -- faint
-                obj.Size          = NumberSequence.new(0.5)       -- small
-                obj.LightEmission = 0
-            end
-
-            -- TRAILS: thin and faint (weapon swing indicators)
-            if obj:IsA("Trail") then
-                tCount += 1
-                if tCount > MAX_TRAILS then
-                    obj.Enabled = false
-                    obj:Destroy()
-                    return
-                end
-                obj.Lifetime     = 0.15
-                obj.Transparency = NumberSequence.new(0.7)
-                obj.WidthScale   = NumberSequence.new(0.3)
-            end
-
-            -- BEAMS: thin and faint (projectile indicators)
-            if obj:IsA("Beam") then
-                bCount += 1
-                if bCount > MAX_BEAMS then
-                    obj.Enabled = false
-                    obj:Destroy()
-                    return
-                end
-                obj.Transparency = NumberSequence.new(0.7)
-                obj.Width0       = 0.3
-                obj.Width1       = 0.3
-            end
-
-            -- LIGHTS: dim them way down (keep just enough glow)
-            if obj:IsA("Light") then
-                obj.Brightness = math.min(obj.Brightness, 1)
-                obj.Range      = math.min(obj.Range, 8)
-            end
-        end)
-    end)
-end)
-
--- Also apply to existing effects
-for _, obj in pairs(Workspace:GetDescendants()) do
+local function tuneEffect(obj)
     pcall(function()
+        -- KILL ALL BEAMS (lightning, lasers, projectiles)
+        if obj:IsA("Beam") then
+            obj.Enabled = false
+            obj:Destroy()
+            return
+        end
+
+        -- PARTICLES: small faint brief flashes
         if obj:IsA("ParticleEmitter") then
-            obj.Rate          = math.min(obj.Rate, 4)
+            pCount += 1
+            if pCount > MAX_PARTICLES then
+                obj.Enabled = false
+                obj:Destroy()
+                return
+            end
+            obj.Rate          = math.min(obj.Rate, 5)
             obj.Lifetime      = NumberRange.new(0.1, 0.3)
             obj.Speed         = NumberRange.new(0, 5)
             obj.Transparency  = NumberSequence.new(0.75)
             obj.Size          = NumberSequence.new(0.5)
             obj.LightEmission = 0
         end
+
+        -- TRAILS: thin faint lines
         if obj:IsA("Trail") then
-            obj.Lifetime     = 0.15
-            obj.Transparency = NumberSequence.new(0.7)
-            obj.WidthScale   = NumberSequence.new(0.3)
+            tCount += 1
+            if tCount > MAX_TRAILS then
+                obj.Enabled = false
+                obj:Destroy()
+                return
+            end
+            obj.Lifetime     = 0.12
+            obj.Transparency = NumberSequence.new(0.75)
+            obj.WidthScale   = NumberSequence.new(0.25)
         end
-        if obj:IsA("Beam") then
-            obj.Transparency = NumberSequence.new(0.7)
-            obj.Width0       = 0.3
-            obj.Width1       = 0.3
-        end
+
+        -- LIGHTS: kill them (they cause the glow spam)
         if obj:IsA("Light") then
-            obj.Brightness = math.min(obj.Brightness, 1)
-            obj.Range      = math.min(obj.Range, 8)
+            obj.Enabled = false
+            obj:Destroy()
         end
     end)
 end
 
--- ===== KEEP OUTLINES SO YOU SEE OPPONENTS =====
--- Add a highlight to nearby players so you can always see them
+for _, obj in pairs(Workspace:GetDescendants()) do
+    tuneEffect(obj)
+end
+
+Workspace.DescendantAdded:Connect(function(obj)
+    task.defer(function() tuneEffect(obj) end)
+end)
+
+-- ===== CONTINUOUS BEAM KILLER =====
+-- Some beams re-spawn; keep sweeping to kill them
 task.spawn(function()
-    while task.wait(1) do
+    while task.wait(0.2) do
         pcall(function()
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= player and plr.Character then
-                    local existing = plr.Character:FindFirstChild("LiteHighlight")
-                    if not existing then
-                        local h = Instance.new("Highlight")
-                        h.Name = "LiteHighlight"
-                        h.FillColor = Color3.fromRGB(255, 100, 100)
-                        h.FillTransparency = 0.8
-                        h.OutlineColor = Color3.fromRGB(255, 255, 255)
-                        h.OutlineTransparency = 0.4
-                        h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        h.Parent = plr.Character
-                    end
+            for _, obj in pairs(Workspace:GetDescendants()) do
+                if obj:IsA("Beam") then
+                    obj.Enabled = false
+                    obj:Destroy()
+                end
+                if obj:IsA("Light") then
+                    obj.Enabled = false
+                    obj:Destroy()
                 end
             end
         end)
@@ -196,7 +163,7 @@ pcall(function()
     setfpscap(9999)
 end)
 
--- ===== NO CAMERA SHAKE =====
+-- ===== NO CAMERA SHAKE (safe for sword spins) =====
 pcall(function()
     local ps = player:FindFirstChild("PlayerScripts")
     if ps then
@@ -226,33 +193,18 @@ task.spawn(function()
     end
 end)
 
--- ===== LIGHTNING C PILLAR FIX =====
+-- ===== LIGHTNING C PILLAR KILLER =====
+-- Removes the giant white pillar entirely
 task.spawn(function()
-    while task.wait(0.5) do
+    while task.wait(0.3) do
         pcall(function()
             for _, obj in pairs(Workspace:GetDescendants()) do
                 if obj:IsA("BasePart") then
                     local size = obj.Size
                     if size.Y > 40 and size.X < 25 and size.Z < 25 then
-                        if obj.Transparency < 0.9 then
-                            obj.Transparency = 0.9
-                            obj.Reflectance  = 0
-                            for _, child in pairs(obj:GetChildren()) do
-                                if child:IsA("Light") then
-                                    child.Brightness = 0.3
-                                    child.Range = 4
-                                end
-                                if child:IsA("ParticleEmitter") then
-                                    child.Rate = 2
-                                    child.Transparency = NumberSequence.new(0.85)
-                                end
-                                if child:IsA("Beam") then
-                                    child.Transparency = NumberSequence.new(0.85)
-                                    child.Width0 = 0.3
-                                    child.Width1 = 0.3
-                                end
-                            end
-                        end
+                        obj.Transparency = 1
+                        obj.CanCollide  = false
+                        obj:Destroy()
                     end
                 end
             end
@@ -287,4 +239,4 @@ pcall(function()
     end)
 end)
 
-print("[Blox Fruits Ultra Lite] Move indicators ON | Everything else minimal.")
+print("[No Beams] Lightning/lasers REMOVED | Minimal flashes kept.")
